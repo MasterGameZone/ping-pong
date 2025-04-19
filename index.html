@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!-- Added viewport-fit=cover to handle safe area insets -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <style>
+    body { 
+      margin: 0; 
+      overflow: hidden;
+      position: relative;
+      background: #000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      /* Adding safe area padding for bottom */
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    /* Start screen style */
+    #startScreen {
+      text-align: center;
+    }
+    #startScreen button, #restartBtn, #homeBtn {
+      font-size: 24px;
+      padding: 15px 30px;
+      background: #4CAF50;
+      border: none;
+      color: white;
+      border-radius: 5px;
+      cursor: pointer;
+      margin: 10px;
+    }
+    /* Hide game container initially */
+    #gameContainer {
+      display: none;
+      position: relative;
+    }
+    /* Adjust canvas height by subtracting the bottom safe area */
+    canvas { 
+      width: 100vw; 
+      height: calc(90vh - env(safe-area-inset-bottom)); 
+      display: block;
+      max-width: 70vh;
+      border: 2px solid white;
+    }
+    #gameOver {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0,0,0,0.8);
+      color: white;
+      padding: 20px;
+      border-radius: 10px;
+      text-align: center;
+      display: none;
+    }
+    #ad-overlay {
+      height: 290px;
+      width: 300px;
+      position: absolute;
+      background-color: white;
+      margin: auto;
+      display: none;
+      z-index: 99;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+
+      #close-start-btn {
+        position: absolute;
+        right: 0;
+        top: 0;
+      }
+
+      p {
+        color: #000000;
+        font-size: 13px;
+        position: absolute;
+        bottom: -16px;
+        left: 0;
+        padding: 5px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Start screen: Contains mode and game start buttons -->
+<div id="startScreen">
+    <button id="modeBtn">Play vs AI</button>
+    <button id="aiDifficulty" style="display:none;">Medium</button>
+    <br>
+    <button id="startGameBtn">Start Game</button>
+</div>
+
+<!-- Game container: Shown after clicking Start Game -->
+<div id="gameContainer">
+  <canvas id="gameCanvas"></canvas>
+  <div id="gameOver">
+      <h2>Game Over!</h2>
+      <p id="winner"></p>
+      <p>Score: <span id="finalScore"></span></p>
+      <button id="restartBtn">Restart</button>
+      <button id="homeBtn">Home</button>
+  </div>
+</div>
+
+<div id="ad-overlay">
+    <button id="close-start-btn">X</button>
+    <p>Visiting this small ad helps us to grow and update. Thanks for your support! 💖</p>
+    <!-- Adsterra Ads Code -->
+  <script type="text/javascript">
+    atOptions = {
+      'key' : '15cd165eb5c6f2b40807bacca76d739c',
+      'format' : 'iframe',
+      'height' : 250,
+      'width' : 300,
+      'params' : {}
+    };
+  </script>
+  <script type="text/javascript" src="//www.highperformanceformat.com/15cd165eb5c6f2b40807bacca76d739c/invoke.js"></script>
+  </div>
+  </div>
+
+  <script>
+    // Get elements for start screen and game container
+    const startScreen = document.getElementById('startScreen');
+    const startGameBtn = document.getElementById('startGameBtn');
+    const modeBtn = document.getElementById('modeBtn');
+    const aiDifficultyBtn = document.getElementById('aiDifficulty');
+    const gameContainer = document.getElementById('gameContainer');
+    
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const gameOverScreen = document.getElementById('gameOver');
+    const restartBtn = document.getElementById('restartBtn');
+    const homeBtn = document.getElementById('homeBtn');
+    const adOverlay = document.getElementById('ad-overlay');
+    const closeBtn = document.getElementById('close-start-btn');
+    
+    // Game settings
+    const ai = {
+        enabled: false,
+        difficulty: 0.4, // 0.6 (easy), 0.8 (medium), 0.9 (hard)
+        speed: 5
+    };
+    
+    // Game objects
+    const topPaddle = {
+        width: 120,
+        height: 20,
+        x: 0,
+        y: 0,
+        score: 0,
+        isAI: false
+    };
+    
+    const bottomPaddle = {
+        width: 120,
+        height: 20,
+        x: 0,
+        y: 0,
+        score: 0,
+        isAI: false
+    };
+    
+    const ball = {
+        size: 20,
+        x: 0,
+        y: 0,
+        speedX: 3,
+        speedY: 4,        // Initial speeds; will be reset in resetBall()
+        baseSpeed: 4      // Base speed used for reset logic
+    };
+    
+    const maxScore = 5;
+    let gameOver = false;
+    const touchMap = {};
+    
+    // Start screen button event listeners
+    modeBtn.addEventListener('click', () => {
+        if (modeBtn.textContent === 'Play vs AI') {
+            modeBtn.textContent = '2 Player';
+            aiDifficultyBtn.style.display = 'inline-block';
+            ai.enabled = true;
+        } else {
+            modeBtn.textContent = 'Play vs AI';
+            aiDifficultyBtn.style.display = 'none';
+            ai.enabled = false;
+        }
+    });
+    
+    aiDifficultyBtn.addEventListener('click', () => {
+        const levels = [
+            { label: 'Easy', value: 0.1 },
+            { label: 'Medium', value: 0.4 },
+            { label: 'Hard', value: 0.7 }
+        ];
+        
+        const currentIndex = levels.findIndex(l => l.value === ai.difficulty);
+        const nextIndex = (currentIndex + 1) % levels.length;
+        ai.difficulty = levels[nextIndex].value;
+        aiDifficultyBtn.textContent = levels[nextIndex].label;
+    });
+    
+    startGameBtn.addEventListener('click', () => {
+        topPaddle.isAI = ai.enabled;
+        bottomPaddle.isAI = false;
+        
+        startScreen.style.display = 'none';
+        gameContainer.style.display = 'block';
+        init();
+    });
+    
+    function init() {
+        resizeCanvas();
+        
+        topPaddle.x = (canvas.width - topPaddle.width) / 2;
+        topPaddle.y = 0;
+        bottomPaddle.x = (canvas.width - bottomPaddle.width) / 2;
+        bottomPaddle.y = canvas.height - bottomPaddle.height - getBottomOffset();
+        
+        resetBall();
+        
+        canvas.addEventListener('touchstart', handleTouchStart);
+        canvas.addEventListener('touchmove', handleTouchMove);
+        canvas.addEventListener('touchend', handleTouchEnd);
+        
+        // Modified: Show ad overlay on restart button click
+        restartBtn.addEventListener('click', () => {
+            adOverlay.style.display = 'block';
+        });
+        
+        requestAnimationFrame(gameLoop);
+    }
+    
+    function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    
+    function getBottomOffset() {
+        return parseInt(getComputedStyle(document.body).getPropertyValue('padding-bottom')) || 20;
+    }
+    
+    function gameLoop() {
+        if (!gameOver) {
+            update();
+            draw();
+        }
+        requestAnimationFrame(gameLoop);
+    }
+    
+    function update() {
+        const speedIncrement = ai.enabled ? 1.02 : 1.04;
+        
+        if (topPaddle.isAI) {
+            let errorMargin = (Math.random() - 0.5) * (40 * (1 - ai.difficulty));
+            const targetX = ball.x + ball.size / 2 - topPaddle.width / 2 + errorMargin;
+            topPaddle.x += (targetX - topPaddle.x) * ai.difficulty;
+            topPaddle.x = Math.max(0, Math.min(canvas.width - topPaddle.width, topPaddle.x));
+        }
+    
+        ball.x += ball.speedX;
+        ball.y += ball.speedY;
+    
+        if (ball.x <= 0 || ball.x + ball.size >= canvas.width) {
+            ball.speedX *= -1;
+        }
+    
+        if (ball.y <= topPaddle.height &&
+            ball.x + ball.size > topPaddle.x &&
+            ball.x < topPaddle.x + topPaddle.width) {
+            ball.speedY *= -speedIncrement;
+            ball.speedX *= speedIncrement;
+        }
+    
+        if (ball.y + ball.size >= bottomPaddle.y &&
+            ball.x + ball.size > bottomPaddle.x &&
+            ball.x < bottomPaddle.x + bottomPaddle.width) {
+            ball.speedY *= -speedIncrement;
+            ball.speedX *= speedIncrement;
+        }
+    
+        if (ball.y < 0) {
+            bottomPaddle.score++;
+            checkGameOver();
+            resetBall();
+        }
+        
+        if (ball.y > canvas.height) {
+            topPaddle.score++;
+            checkGameOver();
+            resetBall();
+        }
+    }
+    
+    function draw() {
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(topPaddle.x, topPaddle.y, topPaddle.width, topPaddle.height);
+        ctx.fillRect(bottomPaddle.x, bottomPaddle.y, bottomPaddle.width, bottomPaddle.height);
+        
+        ctx.beginPath();
+        ctx.arc(ball.x + ball.size / 2, ball.y + ball.size / 2, ball.size / 2, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.font = '48px Arial';
+        ctx.fillText(topPaddle.score, canvas.width / 2 - 60, 60);
+        ctx.fillText(bottomPaddle.score, canvas.width / 2 + 60, canvas.height - 20);
+    }
+    
+    function resetBall() {
+        ball.x = canvas.width / 2 - ball.size / 2;
+        ball.y = canvas.height / 2 - ball.size / 2;
+        
+        if (ai.enabled) {
+            ball.speedX = (ball.baseSpeed - 1) * (Math.random() > 0.5 ? 1 : -1);
+            ball.speedY = (ball.baseSpeed - 1) * (Math.random() > 0.5 ? 1 : -1);
+        } else {
+            ball.speedX = ball.baseSpeed * (Math.random() > 0.5 ? 1 : -1);
+            ball.speedY = ball.baseSpeed * (Math.random() > 0.5 ? 1 : -1);
+        }
+    }
+    
+    function handleTouchStart(e) {
+        e.preventDefault();
+        Array.from(e.changedTouches).forEach(touch => {
+            const rect = canvas.getBoundingClientRect();
+            const isTop = touch.clientY < rect.height / 2;
+            
+            if (!topPaddle.isAI && isTop) {
+                touchMap[touch.identifier] = { isTop: true, startX: touch.clientX };
+            }
+            if (!bottomPaddle.isAI && !isTop) {
+                touchMap[touch.identifier] = { isTop: false, startX: touch.clientX };
+            }
+        });
+    }
+    
+    function handleTouchMove(e) {
+        e.preventDefault();
+        Array.from(e.touches).forEach(touch => {
+            if (touchMap[touch.identifier]) {
+                const rect = canvas.getBoundingClientRect();
+                if (touchMap[touch.identifier].isTop && !topPaddle.isAI) {
+                    topPaddle.x = Math.max(0, Math.min(
+                        canvas.width - topPaddle.width,
+                        touch.clientX - topPaddle.width / 2
+                    ));
+                } else if (!touchMap[touch.identifier].isTop && !bottomPaddle.isAI) {
+                    bottomPaddle.x = Math.max(0, Math.min(
+                        canvas.width - bottomPaddle.width,
+                        touch.clientX - bottomPaddle.width / 2
+                    ));
+                }
+            }
+        });
+    }
+    
+    function handleTouchEnd(e) {
+        e.preventDefault();
+        Array.from(e.changedTouches).forEach(touch => {
+            delete touchMap[touch.identifier];
+        });
+    }
+    
+    function checkGameOver() {
+        if (topPaddle.score >= maxScore || bottomPaddle.score >= maxScore) {
+            gameOver = true;
+            gameOverScreen.style.display = 'block';
+            
+            if (topPaddle.isAI) {
+                document.getElementById('winner').textContent =
+                    topPaddle.score > bottomPaddle.score ? 'AI Wins!' : 'You Win!';
+            } else {
+                document.getElementById('winner').textContent =
+                    topPaddle.score > bottomPaddle.score ? 'Top Player Wins!' : 'Bottom Player Wins!';
+            }
+            
+            document.getElementById('finalScore').textContent = `${topPaddle.score} - ${bottomPaddle.score}`;
+        }
+    }
+    
+    // Modified: This function is now called by closeBtn instead of restartBtn
+    function resetGame() {
+        gameOver = false;
+        gameOverScreen.style.display = 'none';
+        topPaddle.score = 0;
+        bottomPaddle.score = 0;
+        resetBall();
+    }
+    
+    window.addEventListener('resize', () => {
+        resizeCanvas();
+        bottomPaddle.y = canvas.height - bottomPaddle.height - getBottomOffset();
+    });
+    
+    homeBtn.addEventListener('click', () => {
+        gameOver = false;
+        gameOverScreen.style.display = 'none';
+        topPaddle.score = 0;
+        bottomPaddle.score = 0;
+        resetBall();
+    
+        gameContainer.style.display = 'none';
+        startScreen.style.display = 'block';
+    });
+    
+    // New: closeBtn now handles game reset and hides adOverlay
+    closeBtn.addEventListener('click', () => {
+        resetGame();
+        adOverlay.style.display = 'none';
+    });
+    </script>
+</body>
+</html>
