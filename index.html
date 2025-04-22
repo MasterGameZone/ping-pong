@@ -145,7 +145,7 @@
     // Game settings
     const ai = {
         enabled: false,
-        difficulty: 0.4, // 0.6 (easy), 0.8 (medium), 0.9 (hard)
+        difficulty: 0.2, // 0.6 (easy), 0.8 (medium), 0.9 (hard)
         speed: 5
     };
     
@@ -256,7 +256,7 @@
     }
     
     function update() {
-        const speedIncrement = ai.enabled ? 1.02 : 1.04;
+        const speedIncrement = ai.enabled ? 1.08 : 1.08;
         
         if (topPaddle.isAI) {
             let errorMargin = (Math.random() - 0.5) * (40 * (1 - ai.difficulty));
